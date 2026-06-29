@@ -126,10 +126,13 @@ def processar_produto(item, categoria_nome, categoria_emoji):
 def carregar_ids_existentes():
     """Carrega os IDs que já estão no JSON para não reenviar no Telegram."""
     try:
-        with open(ARQUIVO_JSON, "r", encoding="utf-8") as f:
+        with open(ARQUIVO_JSON, "r", encoding="utf-8-sig") as f:
             dados = json.load(f)
             return {p["id"] for p in dados.get("promocoes", [])}
     except FileNotFoundError:
+        return set()
+    except Exception:
+        print("⚠️  JSON existente não pôde ser lido, começando do zero.")
         return set()
 
 
