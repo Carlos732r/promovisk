@@ -1,12 +1,12 @@
 """
 PromoVisk – Script de Automação
 --------------------------------
-O que esse script faz:
-1. Busca um token de acesso na API do Mercado Livre
-2. Pesquisa produtos em promoção por categoria
-3. Filtra apenas os que têm desconto real
-4. Salva tudo em data/promocoes.json
-5. Envia as novidades para o canal do Telegram
+Estratégia:
+1. Usa token OAuth para autenticar
+2. Busca por categoria ID do ML (mais confiável que texto livre)
+3. Filtra produtos com desconto real
+4. Salva em data/promocoes.json
+5. Envia novidades pro Telegram
 """
 
 import os
@@ -14,28 +14,28 @@ import json
 import requests
 from datetime import datetime, timezone
 
-# ── Credenciais (vêm das variáveis de ambiente / GitHub Secrets) ──
+# ── Credenciais ───────────────────────────────────────────────
 ML_CLIENT_ID     = os.environ["ML_CLIENT_ID"]
 ML_CLIENT_SECRET = os.environ["ML_CLIENT_SECRET"]
 TELEGRAM_TOKEN   = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHANNEL_ID", "")
 
 # ── Configurações ─────────────────────────────────────────────
-SITE_ID          = "MLB"          # Brasil
-DESCONTO_MINIMO  = 10             # Só mostra se tiver pelo menos 10% de desconto
-MAX_POR_BUSCA    = 10             # Quantos produtos buscar por categoria
-ARQUIVO_JSON     = "data/promocoes.json"
+SITE_ID         = "MLB"
+DESCONTO_MINIMO = 5       # % mínimo de desconto
+MAX_POR_BUSCA   = 10      # produtos por categoria
+ARQUIVO_JSON    = "data/promocoes.json"
 
-# Categorias para buscar (nome exibido, emoji, termo de busca na API)
+# Categorias do ML Brasil com seus IDs oficiais
+# Fonte: https://api.mercadolibre.com/sites/MLB/categories
 CATEGORIAS = [
-    ("Celulares",   "📱", "celular smartphone"),
-    ("Tecnologia",  "💻", "notebook laptop"),
-    ("Games",       "🎮", "controle console playstation xbox"),
-    ("Informática", "🖥️", "ssd mouse teclado gamer"),
-    ("TVs e Áudio", "📺", "smart tv 4k"),
-    ("Casa",        "🏠", "aspirador robô airfryer"),
-    ("Ferramentas", "🔨", "kit ferramentas furadeira"),
-    ("Moda",        "👕", "tênis camiseta"),
+    ("Celulares",   "📱", "MLB1055"),   # Celulares e Telefones
+    ("Tecnologia",  "💻", "MLB1648"),   # Computadores e Acessórios
+    ("Games",       "🎮", "MLB1144"),   # Video Games
+    ("TVs e Áudio", "📺", "MLB1000"),   # Eletrônicos, Áudio e Vídeo
+    ("Casa",        "🏠", "MLB1574"),   # Eletrodomésticos
+    ("Ferramentas", "🔨", "MLB1039"),   # Ferramentas
+    ("Moda",        "👕", "MLB1430"),   # Moda e Acessórios
 ]
 
 
@@ -43,7 +43,6 @@ CATEGORIAS = [
 # 1. AUTENTICAÇÃO
 # ═══════════════════════════════════════════════════════════════
 def obter_token():
-    """Pega o token de acesso usando Client Credentials."""
     print("🔑 Obtendo token de acesso...")
     url  = "https://api.mercadolibre.com/oauth/token"
     data = {
@@ -54,99 +53,94 @@ def obter_token():
     resp = requests.post(url, data=data, timeout=15)
     resp.raise_for_status()
     token = resp.json()["access_token"]
-    print("✅ Token obtido com sucesso!")
+    print("✅ Token obtido!")
     return token
 
 
 # ═══════════════════════════════════════════════════════════════
-# 2. BUSCA DE PRODUTOS
+# 2. BUSCA POR CATEGORIA
 # ═══════════════════════════════════════════════════════════════
-def buscar_produtos(query, limite=MAX_POR_BUSCA):
-    """Busca produtos na API pública do ML (sem token necessário)."""
-    url    = f"https://api.mercadolibre.com/sites/{SITE_ID}/search"
+def buscar_por_categoria(token, categoria_id, limite=MAX_POR_BUSCA):
+    """Busca produtos em promoção dentro de uma categoria."""
+    url    = "https://api.mercadolibre.com/sites/MLB/search"
     params = {
-        "q":     query,
-        "limit": limite * 3,
-        "sort":  "relevance",
+        "category": categoria_id,
+        "limit":    limite * 4,
+        "sort":     "relevance",
+        "discount": "5-100",   # Filtra por desconto de 5% a 100%
     }
-    # API pública — sem Authorization header
-    resp = requests.get(url, params=params, timeout=15)
+    headers = {"Authorization": f"Bearer {token}"}
+    resp    = requests.get(url, params=params, headers=headers, timeout=15)
+    print(f"   Status: {resp.status_code}")
     if resp.status_code != 200:
-        print(f"  ⚠️  Erro na busca '{query}': {resp.status_code} – {resp.text[:200]}")
+        print(f"   Erro: {resp.text[:300]}")
         return []
     resultados = resp.json().get("results", [])
-    # Filtra só os que têm preço original maior que o atual (desconto real)
-    com_desconto = [
-        r for r in resultados
-        if r.get("original_price") and r["original_price"] > r.get("price", 0)
-    ]
-    print(f"   {len(resultados)} itens retornados → {len(com_desconto)} com desconto real")
-    return com_desconto[:limite]
+    print(f"   API retornou: {len(resultados)} itens")
+
+    # Debug dos 2 primeiros
+    for i, r in enumerate(resultados[:2]):
+        print(f"   [{i+1}] R${r.get('price')} | orig=R${r.get('original_price')} | {r.get('title','')[:45]}")
+
+    return resultados
 
 
+# ═══════════════════════════════════════════════════════════════
+# 3. PROCESSAR PRODUTO
+# ═══════════════════════════════════════════════════════════════
 def processar_produto(item, categoria_nome, categoria_emoji):
-    """Transforma o retorno bruto da API no formato do nosso JSON."""
-    preco_atual    = item.get("price", 0)
+    preco_atual    = item.get("price", 0) or 0
     preco_original = item.get("original_price") or preco_atual
 
-    # Calcula desconto real
-    if preco_original <= preco_atual:
-        return None  # Sem desconto real, ignora
-    desconto = round(((preco_original - preco_atual) / preco_original) * 100)
-    if desconto < DESCONTO_MINIMO:
-        return None  # Desconto pequeno demais, ignora
+    if preco_atual <= 0:
+        return None
 
-    # Parcelas
-    parcelas     = item.get("installments", {})
+    # Calcula desconto
+    if preco_original > preco_atual:
+        desconto = round(((preco_original - preco_atual) / preco_original) * 100)
+    else:
+        desconto = 0
+
+    if desconto < DESCONTO_MINIMO:
+        return None
+
+    parcelas     = item.get("installments") or {}
     parcelas_num = parcelas.get("quantity", 0)
     parcelas_val = parcelas.get("amount", 0)
-
-    # Frete grátis
-    frete_gratis = item.get("shipping", {}).get("free_shipping", False)
-
-    # Link do produto (vamos trocar pelo link de afiliado depois)
-    link = item.get("permalink", "#")
+    frete_gratis = (item.get("shipping") or {}).get("free_shipping", False)
 
     return {
-        "id":                    item.get("id", ""),
-        "titulo":                item.get("title", ""),
-        "categoria":             categoria_nome,
-        "categoria_emoji":       categoria_emoji,
-        "imagem":                item.get("thumbnail", "").replace("I.jpg", "O.jpg"),
-        "preco_atual":           round(preco_atual, 2),
-        "preco_original":        round(preco_original, 2),
-        "desconto_porcentagem":  desconto,
-        "parcelas_num":          parcelas_num,
-        "parcelas_valor":        round(parcelas_val, 2),
-        "frete_gratis":          frete_gratis,
-        "loja":                  "Mercado Livre",
-        "link_afiliado":         link,   # Substituir pelo link de afiliado real
-        "destaque":              desconto >= 30,  # Produtos com 30%+ viram destaque
-        "adicionado_em":         datetime.now(timezone.utc).isoformat(),
+        "id":                   item.get("id", ""),
+        "titulo":               item.get("title", ""),
+        "categoria":            categoria_nome,
+        "categoria_emoji":      categoria_emoji,
+        "imagem":               (item.get("thumbnail") or "").replace("I.jpg", "O.jpg"),
+        "preco_atual":          round(preco_atual, 2),
+        "preco_original":       round(preco_original, 2),
+        "desconto_porcentagem": desconto,
+        "parcelas_num":         parcelas_num,
+        "parcelas_valor":       round(parcelas_val, 2),
+        "frete_gratis":         frete_gratis,
+        "loja":                 "Mercado Livre",
+        "link_afiliado":        item.get("permalink", "#"),
+        "destaque":             desconto >= 25,
+        "adicionado_em":        datetime.now(timezone.utc).isoformat(),
     }
 
 
 # ═══════════════════════════════════════════════════════════════
-# 3. COMPARAR COM JSON ATUAL (para detectar novidades)
+# 4. JSON
 # ═══════════════════════════════════════════════════════════════
 def carregar_ids_existentes():
-    """Carrega os IDs que já estão no JSON para não reenviar no Telegram."""
     try:
         with open(ARQUIVO_JSON, "r", encoding="utf-8-sig") as f:
             dados = json.load(f)
             return {p["id"] for p in dados.get("promocoes", [])}
-    except FileNotFoundError:
-        return set()
     except Exception:
-        print("⚠️  JSON existente não pôde ser lido, começando do zero.")
         return set()
 
 
-# ═══════════════════════════════════════════════════════════════
-# 4. SALVAR JSON
-# ═══════════════════════════════════════════════════════════════
 def salvar_json(promocoes):
-    """Salva a lista de promoções no arquivo JSON do site."""
     os.makedirs("data", exist_ok=True)
     dados = {
         "atualizado_em": datetime.now(timezone.utc).isoformat(),
@@ -162,10 +156,8 @@ def salvar_json(promocoes):
 # 5. TELEGRAM
 # ═══════════════════════════════════════════════════════════════
 def enviar_telegram(produto):
-    """Envia uma promoção para o canal do Telegram."""
     if not TELEGRAM_TOKEN or TELEGRAM_TOKEN == "placeholder":
-        return  # Bot ainda não configurado, pula
-
+        return
     frete = "✅ Frete grátis" if produto["frete_gratis"] else ""
     texto = (
         f"{produto['categoria_emoji']} *{produto['titulo']}*\n\n"
@@ -177,16 +169,16 @@ def enviar_telegram(produto):
     )
     url  = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     data = {
-        "chat_id":    TELEGRAM_CHAT_ID,
-        "text":       texto,
-        "parse_mode": "Markdown",
+        "chat_id":                  TELEGRAM_CHAT_ID,
+        "text":                     texto,
+        "parse_mode":               "Markdown",
         "disable_web_page_preview": False,
     }
     resp = requests.post(url, data=data, timeout=10)
     if resp.status_code == 200:
-        print(f"  ✈️  Telegram: '{produto['titulo'][:40]}...' enviado!")
+        print(f"  ✈️  Telegram: enviado!")
     else:
-        print(f"  ⚠️  Erro Telegram: {resp.status_code} – {resp.text}")
+        print(f"  ⚠️  Telegram erro: {resp.status_code}")
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -196,38 +188,34 @@ def main():
     print("\n🚀 PromoVisk – Iniciando busca de promoções...")
     print(f"⏰ {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}\n")
 
-    # Token ML só é necessário para funcionalidades avançadas futuras
-    # A busca de produtos usa a API pública (sem autenticação)
+    token          = obter_token()
     ids_existentes = carregar_ids_existentes()
     todas          = []
     ids_vistos     = set()
 
-    for categoria_nome, categoria_emoji, query in CATEGORIAS:
-        print(f"\n🔍 Buscando: {categoria_emoji} {categoria_nome} ({query})")
-        itens = buscar_produtos(query)
+    for categoria_nome, categoria_emoji, categoria_id in CATEGORIAS:
+        print(f"\n🔍 {categoria_emoji} {categoria_nome} (ID: {categoria_id})")
+        itens = buscar_por_categoria(token, categoria_id)
 
         for item in itens:
             prod = processar_produto(item, categoria_nome, categoria_emoji)
             if prod is None:
                 continue
             if prod["id"] in ids_vistos:
-                continue  # Evita duplicata
-
+                continue
             ids_vistos.add(prod["id"])
             todas.append(prod)
-            print(f"   ✔ {prod['desconto_porcentagem']}% off – {prod['titulo'][:50]}")
+            print(f"   ✔ -{prod['desconto_porcentagem']}% | R${prod['preco_atual']} | {prod['titulo'][:45]}")
 
-            # Envia no Telegram só se for uma promoção nova
             if prod["id"] not in ids_existentes:
                 enviar_telegram(prod)
 
-    # Ordena por maior desconto
     todas.sort(key=lambda x: x["desconto_porcentagem"], reverse=True)
 
     if todas:
         salvar_json(todas)
     else:
-        print("\n⚠️  Nenhuma promoção encontrada. JSON não foi alterado.")
+        print("\n⚠️  Nenhuma promoção encontrada. JSON não alterado.")
 
     print(f"\n✅ Concluído! {len(todas)} promoções salvas.\n")
 
