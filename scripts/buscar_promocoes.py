@@ -61,22 +61,21 @@ def obter_token():
 # ═══════════════════════════════════════════════════════════════
 # 2. BUSCA DE PRODUTOS
 # ═══════════════════════════════════════════════════════════════
-def buscar_produtos(token, query, limite=MAX_POR_BUSCA):
-    """Busca produtos na API do ML e filtra por desconto manualmente."""
+def buscar_produtos(query, limite=MAX_POR_BUSCA):
+    """Busca produtos na API pública do ML (sem token necessário)."""
     url    = f"https://api.mercadolibre.com/sites/{SITE_ID}/search"
-    # Buscamos mais itens para compensar o filtro manual de desconto
     params = {
         "q":     query,
         "limit": limite * 3,
         "sort":  "relevance",
     }
-    headers = {"Authorization": f"Bearer {token}"}
-    resp    = requests.get(url, params=params, headers=headers, timeout=15)
+    # API pública — sem Authorization header
+    resp = requests.get(url, params=params, timeout=15)
     if resp.status_code != 200:
         print(f"  ⚠️  Erro na busca '{query}': {resp.status_code} – {resp.text[:200]}")
         return []
     resultados = resp.json().get("results", [])
-    # Filtra só os que têm preco original maior que o atual (desconto real)
+    # Filtra só os que têm preço original maior que o atual (desconto real)
     com_desconto = [
         r for r in resultados
         if r.get("original_price") and r["original_price"] > r.get("price", 0)
@@ -197,15 +196,15 @@ def main():
     print("\n🚀 PromoVisk – Iniciando busca de promoções...")
     print(f"⏰ {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}\n")
 
-    token          = obter_token()
+    # Token ML só é necessário para funcionalidades avançadas futuras
+    # A busca de produtos usa a API pública (sem autenticação)
     ids_existentes = carregar_ids_existentes()
     todas          = []
     ids_vistos     = set()
 
     for categoria_nome, categoria_emoji, query in CATEGORIAS:
         print(f"\n🔍 Buscando: {categoria_emoji} {categoria_nome} ({query})")
-        itens = buscar_produtos(token, query)
-        print(f"   Retornou {len(itens)} itens da API")
+        itens = buscar_produtos(query)
 
         for item in itens:
             prod = processar_produto(item, categoria_nome, categoria_emoji)
