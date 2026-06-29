@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Blog – Guias, Reviews e Dicas | PromoVisk</title>
+  <meta name="description" content="Guias de compra, reviews e análises de produtos para você tomar a melhor decisão. Conteúdo atualizado sobre tecnologia, celulares, games e muito mais." />
+  <link rel="icon" href="imagens/logo.png" type="image/png" />
+  <link rel="canonical" href="https://www.promovisk.com.br/blog" />
+  <link rel="stylesheet" href="css/style.css" />
+  <style>
+    .blog-hero {
+      background: linear-gradient(135deg, var(--azul-medio), var(--azul-escuro));
+      padding: 48px 20px;
+      text-align: center;
+      border-bottom: 1px solid var(--borda);
+    }
+    .blog-hero h1 {
+      font-family: 'Barlow', sans-serif;
+      font-size: clamp(24px, 4vw, 40px);
+      font-weight: 900;
+      margin-bottom: 10px;
+    }
+    .blog-hero p { color: var(--cinza-texto); font-size: 15px; }
+
+    .filtros-blog {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 32px;
+    }
+    .filtro-btn {
+      padding: 7px 16px;
+      background: var(--azul-card);
+      border: 1px solid var(--borda);
+      border-radius: 20px;
+      font-size: 13px;
+      color: var(--cinza-texto);
+      cursor: pointer;
+      transition: 0.2s;
+    }
+    .filtro-btn:hover, .filtro-btn.ativo {
+      border-color: var(--amarelo);
+      color: var(--amarelo);
+      background: rgba(245,166,35,0.08);
+    }
+
+    .grid-blog-grande {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+      gap: 24px;
+    }
+
+    .card-blog-grande {
+      background: var(--azul-card);
+      border: 1px solid var(--borda);
+      border-radius: 16px;
+      overflow: hidden;
+      transition: 0.2s;
+    }
+    .card-blog-grande:hover {
+      border-color: rgba(245,166,35,0.3);
+      transform: translateY(-4px);
+      box-shadow: var(--sombra);
+    }
+    .card-blog-grande .thumb {
+      height: 200px;
+      background: linear-gradient(135deg, var(--azul-medio), var(--azul-card));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 64px;
+    }
+    .card-blog-grande .corpo { padding: 20px; }
+    .card-blog-grande h2 { font-size: 17px; font-weight: 700; margin: 8px 0; line-height: 1.4; }
+    .card-blog-grande p { font-size: 13px; color: var(--cinza-texto); line-height: 1.6; }
+    .card-blog-grande .meta {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 14px;
+      font-size: 12px;
+      color: var(--cinza-texto);
+    }
+    .card-blog-grande .ler { color: var(--amarelo); font-weight: 600; }
+
+    .artigo-destaque {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+      margin-bottom: 32px;
+      background: var(--azul-card);
+      border: 1px solid var(--borda);
+      border-radius: 16px;
+      overflow: hidden;
+    }
+    .artigo-destaque .thumb-grande {
+      height: 100%;
+      min-height: 240px;
+      background: linear-gradient(135deg, var(--azul-medio), var(--azul-card));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 80px;
+    }
+    .artigo-destaque .corpo-grande {
+      padding: 28px 28px 28px 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+    .artigo-destaque h2 { font-family: 'Barlow', sans-serif; font-size: 22px; font-weight: 800; margin: 8px 0 12px; line-height: 1.3; }
+    .artigo-destaque p { font-size: 14px; color: var(--cinza-texto); line-height: 1.7; }
+    .artigo-destaque .btn-primary { display: inline-block; margin-top: 20px; }
+
+    @media (max-width: 640px) {
+      .artigo-destaque { grid-template-columns: 1fr; }
+      .artigo-destaque .corpo-grande { padding: 20px; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="header-inner">
+    <a href="index.html" class="logo"><img src="imagens/logo.png" alt="PromoVisk" /></a>
+    <div class="search-bar">
+      <input type="text" placeholder="Buscar artigos..." aria-label="Buscar" />
+      <button>🔍</button>
+    </div>
+    <div class="header-actions">
+      <a href="https://t.me/promovisk" class="btn-telegram" target="_blank">✈️ <span>Telegram</span></a>
+      <button class="hamburger" id="hamburger"><span></span><span></span><span></span></button>
+    </div>
+  </div>
+</header>
+
+<div class="mobile-menu" id="mobile-menu">
+  <a href="index.html">🏠 Início</a>
+  <a href="promocoes.html">🔥 Promoções</a>
+  <a href="blog.html">📝 Blog</a>
+  <a href="categorias/tecnologia.html">💻 Tecnologia</a>
+  <a href="categorias/celulares.html">📱 Celulares</a>
+  <a href="categorias/games.html">🎮 Games</a>
+  <a href="https://t.me/promovisk" target="_blank">✈️ Telegram</a>
+</div>
+
+<nav class="nav-categorias">
+  <div class="nav-inner">
+    <a href="index.html">🏠 Início</a>
+    <a href="promocoes.html">🔥 Promoções</a>
+    <a href="categorias/tecnologia.html">💻 Tecnologia</a>
+    <a href="categorias/celulares.html">📱 Celulares</a>
+    <a href="categorias/games.html">🎮 Games</a>
+    <a href="categorias/informatica.html">🖥️ Informática</a>
+    <a href="categorias/tvs.html">📺 TVs e Áudio</a>
+    <a href="categorias/casa.html">🏠 Casa</a>
+    <a href="categorias/ferramentas.html">🔨 Ferramentas</a>
+    <a href="categorias/moda.html">👕 Moda</a>
+    <a href="blog.html" class="ativo">📝 Blog</a>
+  </div>
+</nav>
+
+<div class="blog-hero">
+  <h1>📝 Guias, Reviews e Dicas</h1>
+  <p>Conteúdo para você comprar com mais confiança e economizar mais</p>
+</div>
+
+<main class="secao">
+
+  <!-- Artigo destaque -->
+  <a href="blog/melhores-celulares-ate-1000.html" class="artigo-destaque">
+    <div class="thumb-grande">📱</div>
+    <div class="corpo-grande">
+      <span class="blog-tag">🏆 Mais lido da semana</span>
+      <h2>Melhores celulares até R$ 1.000 em 2026</h2>
+      <p>Testamos e comparamos os principais smartphones nessa faixa de preço. Veja qual tem melhor câmera, bateria e desempenho para o seu dia a dia — sem enrolação.</p>
+      <span class="btn-primary" style="width: fit-content;">Ler o guia completo →</span>
+    </div>
+  </a>
+
+  <!-- Filtros -->
+  <div class="filtros-blog">
+    <button class="filtro-btn ativo">Todos</button>
+    <button class="filtro-btn">📱 Celulares</button>
+    <button class="filtro-btn">💻 Notebooks</button>
+    <button class="filtro-btn">🎮 Games</button>
+    <button class="filtro-btn">🖥️ Informática</button>
+    <button class="filtro-btn">🏠 Casa</button>
+    <button class="filtro-btn">🔍 Reviews</button>
+    <button class="filtro-btn">📋 Guias</button>
+  </div>
+
+  <!-- Grid de artigos -->
+  <div class="grid-blog-grande">
+
+    <a href="blog/samsung-a06-vale-a-pena.html" class="card-blog-grande">
+      <div class="thumb">🔍</div>
+      <div class="corpo">
+        <span class="blog-tag">Review</span>
+        <h2>Samsung Galaxy A06 vale a pena em 2026?</h2>
+        <p>Analisamos o celular mais vendido do Brasil nessa faixa de preço. Prós, contras e para quem ele é recomendado.</p>
+        <div class="meta">
+          <span>📅 25 jun. 2026 · 8 min de leitura</span>
+          <span class="ler">Ler →</span>
+        </div>
+      </div>
+    </a>
+
+    <a href="blog/notebook-para-estudar-2026.html" class="card-blog-grande">
+      <div class="thumb">💻</div>
+      <div class="corpo">
+        <span class="blog-tag">Guia de Compra</span>
+        <h2>Melhores notebooks para estudar em 2026</h2>
+        <p>Reunimos as melhores opções para universitários e estudantes do ensino médio, com boa bateria e desempenho.</p>
+        <div class="meta">
+          <span>📅 22 jun. 2026 · 10 min de leitura</span>
+          <span class="ler">Ler →</span>
+        </div>
+      </div>
+    </a>
+
+    <a href="blog/fone-bluetooth-barato.html" class="card-blog-grande">
+      <div class="thumb">🎧</div>
+      <div class="corpo">
+        <span class="blog-tag">Guia de Compra</span>
+        <h2>Fone Bluetooth barato que compensa: top 5 em 2026</h2>
+        <p>Você não precisa gastar muito para ter boa qualidade de som. Veja os melhores fones abaixo de R$ 200.</p>
+        <div class="meta">
+          <span>📅 20 jun. 2026 · 6 min de leitura</span>
+          <span class="ler">Ler →</span>
+        </div>
+      </div>
+    </a>
+
+    <a href="blog/mouse-gamer-custo-beneficio.html" class="card-blog-grande">
+      <div class="thumb">🖱️</div>
+      <div class="corpo">
+        <span class="blog-tag">Guia de Compra</span>
+        <h2>Mouse gamer com melhor custo-benefício em 2026</h2>
+        <p>Desde R$ 80 até R$ 300, selecionamos os mouses gamers que oferecem mais pelo seu dinheiro.</p>
+        <div class="meta">
+          <span>📅 18 jun. 2026 · 7 min de leitura</span>
+          <span class="ler">Ler →</span>
+        </div>
+      </div>
+    </a>
+
+    <a href="blog/ssd-vale-a-pena.html" class="card-blog-grande">
+      <div class="thumb">💾</div>
+      <div class="corpo">
+        <span class="blog-tag">Review</span>
+        <h2>Vale a pena trocar o HD por um SSD em 2026?</h2>
+        <p>Sim, e muito! Mas qual escolher? Veja a diferença entre os tipos de SSD, velocidades e qual comprar para cada uso.</p>
+        <div class="meta">
+          <span>📅 15 jun. 2026 · 9 min de leitura</span>
+          <span class="ler">Ler →</span>
+        </div>
+      </div>
+    </a>
+
+    <a href="blog/smartwatch-ate-500.html" class="card-blog-grande">
+      <div class="thumb">⌚</div>
+      <div class="corpo">
+        <span class="blog-tag">Guia de Compra</span>
+        <h2>Melhores smartwatches até R$ 500 para comprar agora</h2>
+        <p>Relógio inteligente com boa bateria, monitoramento de saúde e design bonito. Veja as melhores opções do mercado.</p>
+        <div class="meta">
+          <span>📅 12 jun. 2026 · 8 min de leitura</span>
+          <span class="ler">Ler →</span>
+        </div>
+      </div>
+    </a>
+
+  </div>
+</main>
+
+<section class="newsletter">
+  <h2>📧 Receba artigos por e-mail</h2>
+  <p>Novos guias e reviews toda semana direto no seu e-mail.</p>
+  <form class="newsletter-form" id="newsletter-form">
+    <input type="email" placeholder="seu@email.com" required />
+    <button type="submit">Assinar grátis</button>
+  </form>
+</section>
+
+<footer>
+  <div class="footer-inner">
+    <div class="aviso-afiliado">
+      ⚠️ <strong>Aviso de afiliado:</strong> O PromoVisk participa de programas de afiliados. Links de produtos podem gerar comissão para nós sem custo adicional para você.
+    </div>
+    <div class="footer-bottom">
+      <span>© 2026 PromoVisk. Todos os direitos reservados.</span>
+      <span><a href="politica-de-privacidade.html">Privacidade</a> · <a href="termos-de-uso.html">Termos</a></span>
+    </div>
+  </div>
+</footer>
+
+<script src="js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Promoções – Ofertas do dia em Tecnologia e mais | PromoVisk</title>
+  <meta name="description" content="Veja todas as promoções do dia: celulares, notebooks, games, ferramentas, casa e muito mais. Atualizado diariamente com os melhores preços do Mercado Livre e Shopee." />
+  <link rel="icon" href="imagens/logo.png" type="image/png" />
+  <link rel="canonical" href="https://www.promovisk.com.br/promocoes" />
+  <link rel="stylesheet" href="css/style.css" />
+  <style>
+    .filtros-wrap {
+      background: var(--azul-card);
+      border-bottom: 1px solid var(--borda);
+      padding: 12px 0;
+      position: sticky;
+      top: 68px;
+      z-index: 90;
+    }
+    .filtros-inner {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 0 20px;
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      scrollbar-width: none;
+      align-items: center;
+    }
+    .filtros-inner::-webkit-scrollbar { display: none; }
+    .filtro-chip {
+      padding: 6px 14px;
+      background: var(--azul-medio);
+      border: 1px solid var(--borda);
+      border-radius: 20px;
+      font-size: 13px;
+      color: var(--cinza-texto);
+      cursor: pointer;
+      white-space: nowrap;
+      transition: 0.2s;
+    }
+    .filtro-chip:hover, .filtro-chip.ativo {
+      border-color: var(--amarelo);
+      color: var(--amarelo);
+      background: rgba(245,166,35,0.08);
+    }
+    .sort-wrap {
+      margin-left: auto;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .sort-wrap select {
+      background: var(--azul-medio);
+      border: 1px solid var(--borda);
+      color: var(--branco);
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-size: 13px;
+      outline: none;
+      cursor: pointer;
+    }
+
+    .promocoes-header {
+      background: linear-gradient(135deg, var(--azul-medio), var(--azul-escuro));
+      padding: 32px 20px;
+      border-bottom: 1px solid var(--borda);
+    }
+    .promocoes-header-inner {
+      max-width: 1280px;
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .promocoes-header h1 {
+      font-family: 'Barlow', sans-serif;
+      font-size: clamp(22px, 4vw, 32px);
+      font-weight: 900;
+    }
+    .promocoes-header p { color: var(--cinza-texto); font-size: 14px; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="header-inner">
+    <a href="index.html" class="logo"><img src="imagens/logo.png" alt="PromoVisk" /></a>
+    <div class="search-bar">
+      <input type="text" placeholder="Buscar promoções..." aria-label="Buscar" />
+      <button>🔍</button>
+    </div>
+    <div class="header-actions">
+      <a href="https://t.me/promovisk" class="btn-telegram" target="_blank">✈️ <span>Telegram</span></a>
+      <button class="hamburger" id="hamburger"><span></span><span></span><span></span></button>
+    </div>
+  </div>
+</header>
+
+<div class="mobile-menu" id="mobile-menu">
+  <a href="index.html">🏠 Início</a>
+  <a href="promocoes.html">🔥 Promoções</a>
+  <a href="blog.html">📝 Blog</a>
+  <a href="categorias/tecnologia.html">💻 Tecnologia</a>
+  <a href="https://t.me/promovisk" target="_blank">✈️ Telegram</a>
+</div>
+
+<nav class="nav-categorias">
+  <div class="nav-inner">
+    <a href="index.html">🏠 Início</a>
+    <a href="promocoes.html" class="ativo">🔥 Promoções</a>
+    <a href="categorias/tecnologia.html">💻 Tecnologia</a>
+    <a href="categorias/celulares.html">📱 Celulares</a>
+    <a href="categorias/games.html">🎮 Games</a>
+    <a href="categorias/informatica.html">🖥️ Informática</a>
+    <a href="categorias/tvs.html">📺 TVs</a>
+    <a href="categorias/casa.html">🏠 Casa</a>
+    <a href="categorias/ferramentas.html">🔨 Ferramentas</a>
+    <a href="categorias/moda.html">👕 Moda</a>
+    <a href="blog.html">📝 Blog</a>
+  </div>
+</nav>
+
+<div class="promocoes-header">
+  <div class="promocoes-header-inner">
+    <div>
+      <h1>🔥 Promoções de hoje</h1>
+      <p>Atualizado em 28/06/2026 · 247 ofertas ativas agora</p>
+    </div>
+    <a href="https://t.me/promovisk" class="btn-primary" target="_blank">✈️ Alertas no Telegram</a>
+  </div>
+</div>
+
+<!-- Filtros -->
+<div class="filtros-wrap">
+  <div class="filtros-inner">
+    <button class="filtro-chip ativo">Todos</button>
+    <button class="filtro-chip">💻 Tecnologia</button>
+    <button class="filtro-chip">📱 Celulares</button>
+    <button class="filtro-chip">🎮 Games</button>
+    <button class="filtro-chip">🖥️ Informática</button>
+    <button class="filtro-chip">📺 TVs</button>
+    <button class="filtro-chip">🏠 Casa</button>
+    <button class="filtro-chip">🔨 Ferramentas</button>
+    <button class="filtro-chip">👕 Moda</button>
+    <div class="sort-wrap">
+      <select aria-label="Ordenar por">
+        <option>Mais recentes</option>
+        <option>Maior desconto</option>
+        <option>Menor preço</option>
+        <option>Mais populares</option>
+      </select>
+    </div>
+  </div>
+</div>
+
+<main class="secao">
+  <div class="grid-produtos" id="grid-promocoes">
+
+    <a href="#" class="card-produto" target="_blank" rel="noopener sponsored">
+      <div class="card-img">
+        <span class="badge-desconto">-34%</span>
+        <span class="badge-frete">Frete Grátis</span>
+        <img src="https://via.placeholder.com/130x130/1A2E42/F5A623?text=📱" alt="Samsung Galaxy A16" />
+      </div>
+      <div class="card-corpo">
+        <div class="card-categoria">📱 Celulares</div>
+        <div class="card-nome">Samsung Galaxy A16 5G 128GB Preto</div>
+        <div class="card-precos">
+          <div class="preco-antigo">R$ 1.099,00</div>
+          <div class="preco-atual">R$ 899,90</div>
+          <div class="preco-parcelado">12x R$ 74,99 sem juros</div>
+        </div>
+        <div class="btn-comprar">Ver no Mercado Livre</div>
+      </div>
+    </a>
+
+    <a href="#" class="card-produto" target="_blank" rel="noopener sponsored">
+      <div class="card-img">
+        <span class="badge-desconto">-28%</span>
+        <span class="badge-frete">Frete Grátis</span>
+        <img src="https://via.placeholder.com/130x130/1A2E42/F5A623?text=🎧" alt="JBL Tune 520BT" />
+      </div>
+      <div class="card-corpo">
+        <div class="card-categoria">📱 Celulares</div>
+        <div class="card-nome">Fone JBL Tune 520BT Bluetooth Sem Fio</div>
+        <div class="card-precos">
+          <div class="preco-antigo">R$ 279,00</div>
+          <div class="preco-atual">R$ 199,90</div>
+          <div class="preco-parcelado">6x R$ 33,31 sem juros</div>
+        </div>
+        <div class="btn-comprar">Ver no Mercado Livre</div>
+      </div>
+    </a>
+
+    <a href="#" class="card-produto" target="_blank" rel="noopener sponsored">
+      <div class="card-img">
+        <span class="badge-desconto">-41%</span>
+        <img src="https://via.placeholder.com/130x130/1A2E42/F5A623?text=💾" alt="SSD Kingston" />
+      </div>
+      <div class="card-corpo">
+        <div class="card-categoria">🖥️ Informática</div>
+        <div class="card-nome">SSD Kingston 480GB 2.5" SATA III</div>
+        <div class="card-precos">
+          <div class="preco-antigo">R$ 229,00</div>
+          <div class="preco-atual">R$ 134,90</div>
+          <div class="preco-parcelado">4x R$ 33,72 sem juros</div>
+        </div>
+        <div class="btn-comprar">Ver no Mercado Livre</div>
+      </div>
+    </a>
+
+    <a href="#" class="card-produto" target="_blank" rel="noopener sponsored">
+      <div class="card-img">
+        <span class="badge-desconto">-22%</span>
+        <span class="badge-frete">Frete Grátis</span>
+        <img src="https://via.placeholder.com/130x130/1A2E42/F5A623?text=🖱️" alt="Mouse Logitech G203" />
+      </div>
+      <div class="card-corpo">
+        <div class="card-categoria">🖥️ Informática</div>
+        <div class="card-nome">Mouse Gamer Logitech G203 RGB 8000 DPI</div>
+        <div class="card-precos">
+          <div class="preco-antigo">R$ 189,00</div>
+          <div class="preco-atual">R$ 147,90</div>
+          <div class="preco-parcelado">4x R$ 36,97 sem juros</div>
+        </div>
+        <div class="btn-comprar">Ver no Mercado Livre</div>
+      </div>
+    </a>
+
+    <a href="#" class="card-produto" target="_blank" rel="noopener sponsored">
+      <div class="card-img">
+        <span class="badge-desconto">-31%</span>
+        <span class="badge-frete">Frete Grátis</span>
+        <img src="https://via.placeholder.com/130x130/1A2E42/F5A623?text=🎮" alt="Controle Xbox" />
+      </div>
+      <div class="card-corpo">
+        <div class="card-categoria">🎮 Games</div>
+        <div class="card-nome">Controle Xbox Series Sem Fio Carbon Black</div>
+        <div class="card-precos">
+          <div class="preco-antigo">R$ 499,00</div>
+          <div class="preco-atual">R$ 342,90</div>
+          <div class="preco-parcelado">10x R$ 34,29 sem juros</div>
+        </div>
+        <div class="btn-comprar">Ver no Mercado Livre</div>
+      </div>
+    </a>
+
+    <a href="#" class="card-produto" target="_blank" rel="noopener sponsored">
+      <div class="card-img">
+        <span class="badge-desconto">-19%</span>
+        <img src="https://via.placeholder.com/130x130/1A2E42/F5A623?text=🔧" alt="Kit Ferramentas" />
+      </div>
+      <div class="card-corpo">
+        <div class="card-categoria">🔨 Ferramentas</div>
+        <div class="card-nome">Kit Ferramentas Profissional 110 Peças com Maleta</div>
+        <div class="card-precos">
+          <div class="preco-antigo">R$ 159,00</div>
+          <div class="preco-atual">R$ 128,90</div>
+          <div class="preco-parcelado">4x R$ 32,22 sem juros</div>
+        </div>
+        <div class="btn-comprar">Ver na Shopee</div>
+      </div>
+    </a>
+
+    <a href="#" class="card-produto" target="_blank" rel="noopener sponsored">
+      <div class="card-img">
+        <span class="badge-desconto">-38%</span>
+        <span class="badge-frete">Frete Grátis</span>
+        <img src="https://via.placeholder.com/130x130/1A2E42/F5A623?text=⌨️" alt="Teclado Mecânico" />
+      </div>
+      <div class="card-corpo">
+        <div class="card-categoria">🖥️ Informática</div>
+        <div class="card-nome">Teclado Mecânico Redragon Kumara K552 RGB</div>
+        <div class="card-precos">
+          <div class="preco-antigo">R$ 369,00</div>
+          <div class="preco-atual">R$ 228,90</div>
+          <div class="preco-parcelado">6x R$ 38,15 sem juros</div>
+        </div>
+        <div class="btn-comprar">Ver na Shopee</div>
+      </div>
+    </a>
+
+    <a href="#" class="card-produto" target="_blank" rel="noopener sponsored">
+      <div class="card-img">
+        <span class="badge-desconto">-25%</span>
+        <span class="badge-frete">Frete Grátis</span>
+        <img src="https://via.placeholder.com/130x130/1A2E42/F5A623?text=📺" alt="Smart TV" />
+      </div>
+      <div class="card-corpo">
+        <div class="card-categoria">📺 TVs e Áudio</div>
+        <div class="card-nome">Smart TV Samsung 43" Crystal UHD 4K 2026</div>
+        <div class="card-precos">
+          <div class="preco-antigo">R$ 2.299,00</div>
+          <div class="preco-atual">R$ 1.724,90</div>
+          <div class="preco-parcelado">12x R$ 143,74 sem juros</div>
+        </div>
+        <div class="btn-comprar">Ver no Mercado Livre</div>
+      </div>
+    </a>
+
+    <a href="#" class="card-produto" target="_blank" rel="noopener sponsored">
+      <div class="card-img">
+        <span class="badge-desconto">-32%</span>
+        <img src="https://via.placeholder.com/130x130/1A2E42/F5A623?text=🤖" alt="Aspirador Robô" />
+      </div>
+      <div class="card-corpo">
+        <div class="card-categoria">🏠 Casa</div>
+        <div class="card-nome">Aspirador Robô Xiaomi Robot Vacuum E5</div>
+        <div class="card-precos">
+          <div class="preco-antigo">R$ 1.299,00</div>
+          <div class="preco-atual">R$ 879,90</div>
+          <div class="preco-parcelado">12x R$ 73,32 sem juros</div>
+        </div>
+        <div class="btn-comprar">Ver no Mercado Livre</div>
+      </div>
+    </a>
+
+    <a href="#" class="card-produto" target="_blank" rel="noopener sponsored">
+      <div class="card-img">
+        <span class="badge-desconto">-44%</span>
+        <span class="badge-frete">Frete Grátis</span>
+        <img src="https://via.placeholder.com/130x130/1A2E42/F5A623?text=📷" alt="Webcam" />
+      </div>
+      <div class="card-corpo">
+        <div class="card-categoria">💻 Tecnologia</div>
+        <div class="card-nome">Webcam FullHD 1080p 30fps com Microfone</div>
+        <div class="card-precos">
+          <div class="preco-antigo">R$ 219,00</div>
+          <div class="preco-atual">R$ 122,90</div>
+          <div class="preco-parcelado">4x R$ 30,72 sem juros</div>
+        </div>
+        <div class="btn-comprar">Ver na Shopee</div>
+      </div>
+    </a>
+
+    <a href="#" class="card-produto" target="_blank" rel="noopener sponsored">
+      <div class="card-img">
+        <span class="badge-desconto">-20%</span>
+        <img src="https://via.placeholder.com/130x130/1A2E42/F5A623?text=⌚" alt="Smartwatch" />
+      </div>
+      <div class="card-corpo">
+        <div class="card-categoria">📱 Celulares</div>
+        <div class="card-nome">Smartwatch Xiaomi Redmi Watch 4 GPS</div>
+        <div class="card-precos">
+          <div class="preco-antigo">R$ 499,00</div>
+          <div class="preco-atual">R$ 399,90</div>
+          <div class="preco-parcelado">8x R$ 49,98 sem juros</div>
+        </div>
+        <div class="btn-comprar">Ver no Mercado Livre</div>
+      </div>
+    </a>
+
+    <a href="#" class="card-produto" target="_blank" rel="noopener sponsored">
+      <div class="card-img">
+        <span class="badge-desconto">-15%</span>
+        <span class="badge-frete">Frete Grátis</span>
+        <img src="https://via.placeholder.com/130x130/1A2E42/F5A623?text=👕" alt="Camiseta" />
+      </div>
+      <div class="card-corpo">
+        <div class="card-categoria">👕 Moda</div>
+        <div class="card-nome">Kit 5 Camisetas Básicas 100% Algodão</div>
+        <div class="card-precos">
+          <div class="preco-antigo">R$ 119,00</div>
+          <div class="preco-atual">R$ 99,90</div>
+          <div class="preco-parcelado">3x R$ 33,30 sem juros</div>
+        </div>
+        <div class="btn-comprar">Ver na Shopee</div>
+      </div>
+    </a>
+
+  </div>
+
+  <!-- Carregar mais -->
+  <div style="text-align: center; margin-top: 40px;">
+    <button class="btn-outline" style="padding: 13px 40px; cursor: pointer; border: none; background: var(--azul-card); border: 1px solid var(--borda); color: var(--branco); border-radius: 12px; font-size: 15px; font-weight: 600;">
+      Carregar mais promoções
+    </button>
+  </div>
+</main>
+
+<section class="newsletter">
+  <h2>📧 Receba promoções por e-mail</h2>
+  <p>Cadastre-se e receba as melhores ofertas diretamente no seu e-mail. Sem spam.</p>
+  <form class="newsletter-form" id="newsletter-form">
+    <input type="email" placeholder="seu@email.com" required />
+    <button type="submit">Quero receber!</button>
+  </form>
+</section>
+
+<footer>
+  <div class="footer-inner">
+    <div class="aviso-afiliado">
+      ⚠️ <strong>Aviso de afiliado:</strong> O PromoVisk participa de programas de afiliados do Mercado Livre e Shopee. Quando você compra por nossos links, podemos receber comissão sem custo adicional para você.
+    </div>
+    <div class="footer-bottom">
+      <span>© 2026 PromoVisk. Todos os direitos reservados.</span>
+      <span><a href="politica-de-privacidade.html">Privacidade</a> · <a href="termos-de-uso.html">Termos</a></span>
+    </div>
+  </div>
+</footer>
+
+<script src="js/main.js"></script>
+<script>
+  // Filtros de categoria
+  document.querySelectorAll('.filtro-chip').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.filtro-chip').forEach(b => b.classList.remove('ativo'));
+      btn.classList.add('ativo');
+    });
+  });
+</script>
+</body>
+</html>
