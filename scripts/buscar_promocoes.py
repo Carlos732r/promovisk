@@ -22,7 +22,7 @@ TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHANNEL_ID", "")
 
 # ── Configurações ─────────────────────────────────────────────
 SITE_ID          = "MLB"          # Brasil
-DESCONTO_MINIMO  = 15             # Só mostra se tiver pelo menos 15% de desconto
+DESCONTO_MINIMO  = 10             # Só mostra se tiver pelo menos 10% de desconto
 MAX_POR_BUSCA    = 10             # Quantos produtos buscar por categoria
 ARQUIVO_JSON     = "data/promocoes.json"
 
@@ -62,20 +62,27 @@ def obter_token():
 # 2. BUSCA DE PRODUTOS
 # ═══════════════════════════════════════════════════════════════
 def buscar_produtos(token, query, limite=MAX_POR_BUSCA):
-    """Busca produtos na API do ML com filtro de promoção."""
+    """Busca produtos na API do ML e filtra por desconto manualmente."""
     url    = f"https://api.mercadolibre.com/sites/{SITE_ID}/search"
+    # Buscamos mais itens para compensar o filtro manual de desconto
     params = {
-        "q":           query,
-        "limit":       limite,
-        "sort":        "relevance",
-        "promotions":  "discount_price",  # Só itens com desconto
+        "q":     query,
+        "limit": limite * 3,
+        "sort":  "relevance",
     }
     headers = {"Authorization": f"Bearer {token}"}
     resp    = requests.get(url, params=params, headers=headers, timeout=15)
     if resp.status_code != 200:
-        print(f"  ⚠️  Erro na busca '{query}': {resp.status_code}")
+        print(f"  ⚠️  Erro na busca '{query}': {resp.status_code} – {resp.text[:200]}")
         return []
-    return resp.json().get("results", [])
+    resultados = resp.json().get("results", [])
+    # Filtra só os que têm preco original maior que o atual (desconto real)
+    com_desconto = [
+        r for r in resultados
+        if r.get("original_price") and r["original_price"] > r.get("price", 0)
+    ]
+    print(f"   {len(resultados)} itens retornados → {len(com_desconto)} com desconto real")
+    return com_desconto[:limite]
 
 
 def processar_produto(item, categoria_nome, categoria_emoji):
