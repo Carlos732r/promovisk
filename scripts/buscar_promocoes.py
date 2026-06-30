@@ -57,10 +57,10 @@ def obter_token():
 # ═══════════════════════════════════════════════════════════════
 def buscar_por_categoria(token, categoria_id):
     url     = "https://api.mercadolibre.com/sites/MLB/search"
-    headers = {"Authorization": f"Bearer {token}"}
+    headers = {**HEADERS_NAVEGADOR, "Authorization": f"Bearer {token}"}
     params  = {
         "category": categoria_id,
-        "limit":    MAX_POR_CAT * 5,  # Busca mais para filtrar depois
+        "limit":    MAX_POR_CAT * 5,
         "sort":     "relevance",
     }
     resp = requests.get(url, params=params, headers=headers, timeout=15)
@@ -76,11 +76,17 @@ def buscar_por_categoria(token, categoria_id):
 # ═══════════════════════════════════════════════════════════════
 # 3. BUSCAR DETALHES DO PRODUTO (preço, cupom, etc)
 # ═══════════════════════════════════════════════════════════════
+HEADERS_NAVEGADOR = {
+    "User-Agent":      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+    "Accept":          "application/json, text/plain, */*",
+    "Accept-Language": "pt-BR,pt;q=0.9",
+    "Referer":         "https://www.mercadolivre.com.br/",
+    "Origin":          "https://www.mercadolivre.com.br",
+}
+
 def buscar_detalhes(token, item_id):
     """Busca detalhes extras do produto incluindo cupons e promoções."""
-    headers = {"Authorization": f"Bearer {token}"}
-
-    # Detalhes do item
+    headers = {**HEADERS_NAVEGADOR, "Authorization": f"Bearer {token}"}
     resp = requests.get(
         f"https://api.mercadolibre.com/items/{item_id}",
         headers=headers,
