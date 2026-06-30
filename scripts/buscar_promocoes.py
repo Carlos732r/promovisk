@@ -1,186 +1,295 @@
 """
-PromoVisk – Script de Automação
-Busca produtos por categoria no ML, filtra descontos reais,
-captura cupons e salva em JSON + envia pro Telegram.
+PromoVisk – Script de Automação v3
+------------------------------------
+Estratégia: acessa a página de ofertas do ML como navegador,
+extrai os produtos do JSON embutido na página (sem API, sem token).
 """
 
 import os
 import json
+import re
+import time
 import requests
+from bs4 import BeautifulSoup
 from datetime import datetime, timezone
 
-# ── Credenciais ───────────────────────────────────────────────
-ML_CLIENT_ID     = os.environ["ML_CLIENT_ID"]
-ML_CLIENT_SECRET = os.environ["ML_CLIENT_SECRET"]
+# ── Credenciais Telegram ──────────────────────────────────────
 TELEGRAM_TOKEN   = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHANNEL_ID", "")
 
 # ── Configurações ─────────────────────────────────────────────
-SITE_ID         = "MLB"
-DESCONTO_MINIMO = 5
-MAX_POR_CAT     = 8
 ARQUIVO_JSON    = "data/promocoes.json"
+MAX_PRODUTOS    = 60   # Total máximo de produtos no JSON
+DESCONTO_MINIMO = 5    # % mínimo para incluir
 
-# Categorias com IDs oficiais do ML Brasil
-CATEGORIAS = [
-    ("Celulares",   "📱", "MLB1055"),
-    ("Tecnologia",  "💻", "MLB1648"),
-    ("Games",       "🎮", "MLB1144"),
-    ("TVs e Áudio", "📺", "MLB1000"),
-    ("Casa",        "🏠", "MLB1574"),
-    ("Ferramentas", "🔨", "MLB1039"),
-    ("Moda",        "👕", "MLB1430"),
+# URLs de ofertas do ML por categoria
+PAGINAS = [
+    ("Celulares",   "📱", "https://www.mercadolivre.com.br/ofertas#deals-filter-facets=MLB1055"),
+    ("Tecnologia",  "💻", "https://www.mercadolivre.com.br/ofertas#deals-filter-facets=MLB1648"),
+    ("Games",       "🎮", "https://www.mercadolivre.com.br/ofertas#deals-filter-facets=MLB1144"),
+    ("TVs e Áudio", "📺", "https://www.mercadolivre.com.br/ofertas#deals-filter-facets=MLB1000"),
+    ("Casa",        "🏠", "https://www.mercadolivre.com.br/ofertas#deals-filter-facets=MLB1574"),
+    ("Ferramentas", "🔨", "https://www.mercadolivre.com.br/ofertas#deals-filter-facets=MLB1039"),
+    ("Moda",        "👕", "https://www.mercadolivre.com.br/ofertas#deals-filter-facets=MLB1430"),
 ]
 
-
-# ═══════════════════════════════════════════════════════════════
-# 1. TOKEN
-# ═══════════════════════════════════════════════════════════════
-def obter_token():
-    print("🔑 Obtendo token...")
-    resp = requests.post(
-        "https://api.mercadolibre.com/oauth/token",
-        data={
-            "grant_type":    "client_credentials",
-            "client_id":     ML_CLIENT_ID,
-            "client_secret": ML_CLIENT_SECRET,
-        },
-        timeout=15,
-    )
-    resp.raise_for_status()
-    print("✅ Token obtido!")
-    return resp.json()["access_token"]
-
-
-# ═══════════════════════════════════════════════════════════════
-# 2. BUSCA POR CATEGORIA (sem parâmetros restritos)
-# ═══════════════════════════════════════════════════════════════
-def buscar_por_categoria(token, categoria_id):
-    url     = "https://api.mercadolibre.com/sites/MLB/search"
-    headers = {**HEADERS_NAVEGADOR, "Authorization": f"Bearer {token}"}
-    params  = {
-        "category": categoria_id,
-        "limit":    MAX_POR_CAT * 5,
-        "sort":     "relevance",
-    }
-    resp = requests.get(url, params=params, headers=headers, timeout=15)
-    print(f"   Status: {resp.status_code}")
-    if resp.status_code != 200:
-        print(f"   Erro: {resp.text[:200]}")
-        return []
-    resultados = resp.json().get("results", [])
-    print(f"   Retornou: {len(resultados)} itens")
-    return resultados
-
-
-# ═══════════════════════════════════════════════════════════════
-# 3. BUSCAR DETALHES DO PRODUTO (preço, cupom, etc)
-# ═══════════════════════════════════════════════════════════════
-HEADERS_NAVEGADOR = {
+# Headers que imitam Chrome real
+HEADERS = {
     "User-Agent":      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
-    "Accept":          "application/json, text/plain, */*",
-    "Accept-Language": "pt-BR,pt;q=0.9",
-    "Referer":         "https://www.mercadolivre.com.br/",
-    "Origin":          "https://www.mercadolivre.com.br",
+    "Accept":          "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+    "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8",
+    "Accept-Encoding": "gzip, deflate, br",
+    "Connection":      "keep-alive",
+    "Upgrade-Insecure-Requests": "1",
+    "Sec-Fetch-Dest":  "document",
+    "Sec-Fetch-Mode":  "navigate",
+    "Sec-Fetch-Site":  "none",
+    "Cache-Control":   "max-age=0",
 }
 
-def buscar_detalhes(token, item_id):
-    """Busca detalhes extras do produto incluindo cupons e promoções."""
-    headers = {**HEADERS_NAVEGADOR, "Authorization": f"Bearer {token}"}
-    resp = requests.get(
-        f"https://api.mercadolibre.com/items/{item_id}",
-        headers=headers,
-        timeout=10,
-    )
-    if resp.status_code != 200:
-        return None
-    return resp.json()
-
 
 # ═══════════════════════════════════════════════════════════════
-# 4. PROCESSAR PRODUTO
+# 1. BUSCA NA PÁGINA DE OFERTAS
 # ═══════════════════════════════════════════════════════════════
-def processar_produto(item, categoria_nome, categoria_emoji, token):
-    preco_atual    = item.get("price", 0) or 0
-    preco_original = item.get("original_price") or 0
+def buscar_ofertas_pagina(categoria_nome, categoria_emoji, url):
+    """Acessa a página de ofertas e extrai produtos do JSON embutido."""
+    print(f"\n🔍 {categoria_emoji} {categoria_nome}")
+    print(f"   URL: {url}")
 
-    if preco_atual <= 0:
-        return None
-
-    # Calcula desconto
-    if preco_original > preco_atual:
-        desconto = round(((preco_original - preco_atual) / preco_original) * 100)
-    else:
-        # Sem original_price no resultado da busca — tenta buscar detalhes
-        preco_original = preco_atual
-        desconto = 0
-
-    # Tenta buscar detalhes para pegar original_price e cupons
-    cupom_codigo = ""
-    cupom_valor  = ""
     try:
-        detalhes = buscar_detalhes(token, item.get("id", ""))
-        if detalhes:
-            orig = detalhes.get("original_price") or 0
-            if orig > preco_atual:
-                preco_original = orig
-                desconto = round(((preco_original - preco_atual) / preco_original) * 100)
+        session = requests.Session()
+        # Primeiro acessa a home para pegar cookies
+        session.get("https://www.mercadolivre.com.br", headers=HEADERS, timeout=15)
+        time.sleep(1)
 
-            # Captura cupons se existirem
-            sale_terms = detalhes.get("sale_terms") or []
-            for term in sale_terms:
-                if term.get("id") == "COUPON_CODE":
-                    cupom_codigo = term.get("value_struct", {}).get("number", "") or term.get("value_name", "")
-                if term.get("id") == "COUPON_DISCOUNT":
-                    cupom_valor = term.get("value_name", "")
+        # Depois acessa a página de ofertas
+        resp = session.get(
+            "https://www.mercadolivre.com.br/ofertas",
+            headers=HEADERS,
+            timeout=20,
+        )
+        print(f"   Status: {resp.status_code}")
 
-            # Também verifica promotions
-            promotions = detalhes.get("promotions") or []
-            for promo in promotions:
-                if promo.get("coupon_code"):
-                    cupom_codigo = promo.get("coupon_code", "")
-                    cupom_valor  = promo.get("coupon_discount", "")
+        if resp.status_code != 200:
+            print(f"   ⚠️ Erro HTTP: {resp.status_code}")
+            return []
+
+        return extrair_produtos_html(resp.text, categoria_nome, categoria_emoji)
+
     except Exception as e:
-        print(f"   ⚠️ Erro ao buscar detalhes de {item.get('id')}: {e}")
+        print(f"   ⚠️ Erro: {e}")
+        return []
 
-    if desconto < DESCONTO_MINIMO:
+
+def extrair_produtos_html(html, categoria_nome, categoria_emoji):
+    """Extrai produtos do HTML da página de ofertas."""
+    produtos = []
+
+    # Tenta extrair do JSON embutido na página (__PRELOADED_STATE__ ou similar)
+    padroes_json = [
+        r'window\.__PRELOADED_STATE__\s*=\s*({.+?});\s*</script>',
+        r'window\.__INITIAL_STATE__\s*=\s*({.+?});\s*</script>',
+        r'"deals"\s*:\s*(\[.+?\])\s*[,}]',
+        r'deals-app-container["\s]+data-component[^>]+>(.+?)</script>',
+    ]
+
+    for padrao in padroes_json:
+        matches = re.findall(padrao, html, re.DOTALL)
+        if matches:
+            print(f"   ✔ JSON encontrado com padrão: {padrao[:40]}...")
+            for match in matches[:1]:
+                try:
+                    dados = json.loads(match)
+                    prods = extrair_de_json(dados, categoria_nome, categoria_emoji)
+                    if prods:
+                        print(f"   ✔ {len(prods)} produtos extraídos do JSON")
+                        return prods
+                except Exception as e:
+                    print(f"   ⚠️ Erro ao parsear JSON: {e}")
+
+    # Fallback: extrai do HTML diretamente com BeautifulSoup
+    print("   Tentando extração via HTML...")
+    return extrair_de_html(html, categoria_nome, categoria_emoji)
+
+
+def extrair_de_json(dados, categoria_nome, categoria_emoji):
+    """Extrai produtos de um JSON embutido na página."""
+    produtos = []
+
+    # Navega pelo JSON procurando listas de produtos
+    def buscar_itens(obj, profundidade=0):
+        if profundidade > 8:
+            return []
+        itens = []
+        if isinstance(obj, list):
+            for item in obj:
+                if isinstance(item, dict) and item.get("price") and item.get("title"):
+                    itens.append(item)
+                else:
+                    itens.extend(buscar_itens(item, profundidade + 1))
+        elif isinstance(obj, dict):
+            for v in obj.values():
+                itens.extend(buscar_itens(v, profundidade + 1))
+        return itens
+
+    itens = buscar_itens(dados)
+    for item in itens[:15]:
+        prod = montar_produto(item, categoria_nome, categoria_emoji)
+        if prod:
+            produtos.append(prod)
+    return produtos
+
+
+def extrair_de_html(html, categoria_nome, categoria_emoji):
+    """Extrai produtos diretamente do HTML com BeautifulSoup."""
+    soup    = BeautifulSoup(html, "html.parser")
+    produtos = []
+
+    # Seletores comuns de cards de produto no ML
+    seletores = [
+        "li.promotion-item",
+        "div.promotion-item",
+        "li[class*='deal']",
+        "div[class*='deal-item']",
+        "article[class*='item']",
+        "li.ui-search-layout__item",
+    ]
+
+    cards = []
+    for seletor in seletores:
+        cards = soup.select(seletor)
+        if cards:
+            print(f"   ✔ {len(cards)} cards encontrados com '{seletor}'")
+            break
+
+    if not cards:
+        print("   ⚠️ Nenhum card encontrado no HTML")
+        # Debug: salva trecho do HTML para análise
+        print(f"   HTML snippet: {html[2000:2500]}")
+        return []
+
+    for card in cards[:15]:
+        try:
+            titulo_el = card.select_one("p.promotion-item__title, h2, .item__title, [class*='title']")
+            preco_el  = card.select_one("[class*='price__fraction'], [class*='price-tag']")
+            link_el   = card.select_one("a[href]")
+            img_el    = card.select_one("img[src]")
+            orig_el   = card.select_one("[class*='original'], [class*='before'], s")
+            desc_el   = card.select_one("[class*='discount'], [class*='off']")
+
+            if not titulo_el or not preco_el:
+                continue
+
+            titulo = titulo_el.get_text(strip=True)
+            link   = link_el["href"] if link_el else "#"
+            imagem = img_el.get("data-src") or img_el.get("src", "") if img_el else ""
+
+            # Limpa e converte preço
+            preco_txt = preco_el.get_text(strip=True).replace(".", "").replace(",", ".")
+            preco_num = float(re.sub(r"[^\d.]", "", preco_txt) or "0")
+
+            orig_num = 0
+            if orig_el:
+                orig_txt = orig_el.get_text(strip=True).replace(".", "").replace(",", ".")
+                orig_num = float(re.sub(r"[^\d.]", "", orig_txt) or "0")
+
+            desconto = 0
+            if desc_el:
+                desc_txt = desc_el.get_text(strip=True)
+                desc_match = re.search(r"(\d+)", desc_txt)
+                if desc_match:
+                    desconto = int(desc_match.group(1))
+            elif orig_num > preco_num > 0:
+                desconto = round(((orig_num - preco_num) / orig_num) * 100)
+
+            if preco_num <= 0 or desconto < DESCONTO_MINIMO:
+                continue
+
+            frete_el     = card.select_one("[class*='shipping'], [class*='frete']")
+            frete_gratis = bool(frete_el and "grátis" in frete_el.get_text().lower())
+
+            produtos.append({
+                "id":                   re.search(r"MLB\d+", link).group() if re.search(r"MLB\d+", link) else f"item_{len(produtos)}",
+                "titulo":               titulo,
+                "categoria":            categoria_nome,
+                "categoria_emoji":      categoria_emoji,
+                "imagem":               imagem,
+                "preco_atual":          round(preco_num, 2),
+                "preco_original":       round(orig_num, 2) if orig_num > preco_num else round(preco_num * 1.2, 2),
+                "desconto_porcentagem": desconto,
+                "parcelas_num":         0,
+                "parcelas_valor":       0,
+                "frete_gratis":         frete_gratis,
+                "frete_tag":            "Frete grátis ⚡ FULL" if frete_gratis else "",
+                "cupom_codigo":         "",
+                "cupom_valor":          "",
+                "loja":                 "Mercado Livre",
+                "link_afiliado":        link,
+                "destaque":             desconto >= 25,
+                "adicionado_em":        datetime.now(timezone.utc).isoformat(),
+            })
+        except Exception as e:
+            print(f"   ⚠️ Erro ao processar card: {e}")
+            continue
+
+    print(f"   ✔ {len(produtos)} produtos extraídos do HTML")
+    return produtos
+
+
+def montar_produto(item, categoria_nome, categoria_emoji):
+    """Monta produto a partir de um dict do JSON embutido."""
+    try:
+        preco_atual    = float(item.get("price", 0) or 0)
+        preco_original = float(item.get("original_price", 0) or item.get("originalPrice", 0) or 0)
+        titulo         = item.get("title", "") or item.get("name", "")
+        link           = item.get("permalink", "") or item.get("url", "") or "#"
+        imagem         = item.get("thumbnail", "") or item.get("image", "") or ""
+        item_id        = item.get("id", "") or re.search(r"MLB\d+", link).group() if re.search(r"MLB\d+", link) else ""
+
+        if not titulo or preco_atual <= 0:
+            return None
+
+        if preco_original > preco_atual:
+            desconto = round(((preco_original - preco_atual) / preco_original) * 100)
+        else:
+            desconto = int(item.get("discount_percentage", 0) or item.get("discountPercentage", 0) or 0)
+
+        if desconto < DESCONTO_MINIMO:
+            return None
+
+        frete        = item.get("shipping", {}) or {}
+        frete_gratis = frete.get("free_shipping", False) or frete.get("freeShipping", False)
+
+        parcelas     = item.get("installments", {}) or {}
+        parcelas_num = int(parcelas.get("quantity", 0) or 0)
+        parcelas_val = float(parcelas.get("amount", 0) or 0)
+
+        return {
+            "id":                   str(item_id),
+            "titulo":               titulo,
+            "categoria":            categoria_nome,
+            "categoria_emoji":      categoria_emoji,
+            "imagem":               imagem.replace("I.jpg", "O.jpg"),
+            "preco_atual":          round(preco_atual, 2),
+            "preco_original":       round(preco_original, 2) if preco_original > preco_atual else round(preco_atual * 1.2, 2),
+            "desconto_porcentagem": desconto,
+            "parcelas_num":         parcelas_num,
+            "parcelas_valor":       round(parcelas_val, 2),
+            "frete_gratis":         frete_gratis,
+            "frete_tag":            "Frete grátis ⚡ FULL" if frete_gratis else "",
+            "cupom_codigo":         "",
+            "cupom_valor":          "",
+            "loja":                 "Mercado Livre",
+            "link_afiliado":        link,
+            "destaque":             desconto >= 25,
+            "adicionado_em":        datetime.now(timezone.utc).isoformat(),
+        }
+    except Exception:
         return None
-
-    parcelas     = item.get("installments") or {}
-    parcelas_num = parcelas.get("quantity", 0)
-    parcelas_val = parcelas.get("amount", 0)
-    frete_gratis = (item.get("shipping") or {}).get("free_shipping", False)
-
-    # Monta tag de frete igual ao ML
-    if frete_gratis:
-        frete_tag = "Frete grátis ⚡ FULL"
-    else:
-        frete_tag = ""
-
-    return {
-        "id":                   item.get("id", ""),
-        "titulo":               item.get("title", ""),
-        "categoria":            categoria_nome,
-        "categoria_emoji":      categoria_emoji,
-        "imagem":               (item.get("thumbnail") or "").replace("I.jpg", "O.jpg"),
-        "preco_atual":          round(preco_atual, 2),
-        "preco_original":       round(preco_original, 2),
-        "desconto_porcentagem": desconto,
-        "parcelas_num":         parcelas_num,
-        "parcelas_valor":       round(parcelas_val, 2),
-        "frete_gratis":         frete_gratis,
-        "frete_tag":            frete_tag,
-        "cupom_codigo":         cupom_codigo,
-        "cupom_valor":          cupom_valor,
-        "loja":                 "Mercado Livre",
-        "link_afiliado":        item.get("permalink", "#"),
-        "destaque":             desconto >= 25,
-        "adicionado_em":        datetime.now(timezone.utc).isoformat(),
-    }
 
 
 # ═══════════════════════════════════════════════════════════════
-# 5. JSON
+# 2. JSON
 # ═══════════════════════════════════════════════════════════════
 def carregar_ids_existentes():
     try:
@@ -198,11 +307,11 @@ def salvar_json(promocoes):
             "total":         len(promocoes),
             "promocoes":     promocoes,
         }, f, ensure_ascii=False, indent=2)
-    print(f"✅ JSON salvo com {len(promocoes)} promoções!")
+    print(f"\n✅ JSON salvo com {len(promocoes)} promoções!")
 
 
 # ═══════════════════════════════════════════════════════════════
-# 6. TELEGRAM
+# 3. TELEGRAM
 # ═══════════════════════════════════════════════════════════════
 def enviar_telegram(produto):
     if not TELEGRAM_TOKEN or TELEGRAM_TOKEN == "placeholder":
@@ -223,7 +332,7 @@ def enviar_telegram(produto):
         f"*{produto['desconto_porcentagem']}% OFF*"
         f"{frete_linha}"
         f"{cupom_linha}\n\n"
-        f"🛒 [Ver oferta no Mercado Livre]({produto['link_afiliado']})\n\n"
+        f"🛒 [Ver oferta]({produto['link_afiliado']})\n\n"
         f"_PromoVisk – Promoções que valem a pena_ 🔥"
     )
 
@@ -237,53 +346,41 @@ def enviar_telegram(produto):
         },
         timeout=10,
     )
-    status = "✈️ Enviado!" if resp.status_code == 200 else f"⚠️ Erro {resp.status_code}"
-    print(f"   Telegram: {status}")
+    print(f"   Telegram: {'✈️ Enviado!' if resp.status_code == 200 else f'⚠️ Erro {resp.status_code}'}")
 
 
 # ═══════════════════════════════════════════════════════════════
-# 7. MAIN
+# 4. MAIN
 # ═══════════════════════════════════════════════════════════════
 def main():
     print("\n🚀 PromoVisk – Iniciando busca de promoções...")
     print(f"⏰ {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}\n")
 
-    token          = obter_token()
     ids_existentes = carregar_ids_existentes()
     todas          = []
     ids_vistos     = set()
 
-    for categoria_nome, categoria_emoji, categoria_id in CATEGORIAS:
-        print(f"\n🔍 {categoria_emoji} {categoria_nome} (ID: {categoria_id})")
-        itens = buscar_por_categoria(token, categoria_id)
+    for categoria_nome, categoria_emoji, url in PAGINAS:
+        produtos = buscar_ofertas_pagina(categoria_nome, categoria_emoji, url)
 
-        aceitos = 0
-        for item in itens:
-            if aceitos >= MAX_POR_CAT:
-                break
-            if item.get("id") in ids_vistos:
+        for prod in produtos:
+            if prod["id"] in ids_vistos:
                 continue
-
-            prod = processar_produto(item, categoria_nome, categoria_emoji, token)
-            if prod is None:
-                continue
-
             ids_vistos.add(prod["id"])
             todas.append(prod)
-            aceitos += 1
-
-            cupom_info = f" | 🏷️ {prod['cupom_codigo']}" if prod.get("cupom_codigo") else ""
-            print(f"   ✔ -{prod['desconto_porcentagem']}% | R${prod['preco_atual']} | {prod['titulo'][:40]}{cupom_info}")
 
             if prod["id"] not in ids_existentes:
                 enviar_telegram(prod)
 
+        time.sleep(2)  # Pausa entre categorias para não sobrecarregar
+
     todas.sort(key=lambda x: x["desconto_porcentagem"], reverse=True)
+    todas = todas[:MAX_PRODUTOS]
 
     if todas:
         salvar_json(todas)
     else:
-        print("\n⚠️ Nenhuma promoção encontrada. JSON não alterado.")
+        print("\n⚠️ Nenhuma promoção encontrada.")
 
     print(f"\n✅ Concluído! {len(todas)} promoções salvas.\n")
 
