@@ -36,15 +36,10 @@ PAGINAS = [
 # Headers que imitam Chrome real
 HEADERS = {
     "User-Agent":      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
-    "Accept":          "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-    "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8",
-    "Accept-Encoding": "gzip, deflate, br",
+    "Accept":          "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "pt-BR,pt;q=0.9",
     "Connection":      "keep-alive",
-    "Upgrade-Insecure-Requests": "1",
-    "Sec-Fetch-Dest":  "document",
-    "Sec-Fetch-Mode":  "navigate",
-    "Sec-Fetch-Site":  "none",
-    "Cache-Control":   "max-age=0",
+    # Accept-Encoding removido — requests gerencia descompressão automaticamente
 }
 
 
@@ -74,7 +69,13 @@ def buscar_ofertas_pagina(categoria_nome, categoria_emoji, url):
             print(f"   ⚠️ Erro HTTP: {resp.status_code}")
             return []
 
-        return extrair_produtos_html(resp.text, categoria_nome, categoria_emoji)
+        # Garante decodificação correta
+        resp.encoding = resp.apparent_encoding or "utf-8"
+        html = resp.text
+        print(f"   Encoding detectado: {resp.encoding}")
+        print(f"   Tamanho do HTML: {len(html)} chars")
+        print(f"   Início do HTML: {html[:200]}")
+        return extrair_produtos_html(html, categoria_nome, categoria_emoji)
 
     except Exception as e:
         print(f"   ⚠️ Erro: {e}")
