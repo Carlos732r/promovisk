@@ -1,8 +1,9 @@
 """
-PromoVisk – Script de Automação v3
+PromoVisk – Script de Automação v4
 ------------------------------------
-Estratégia: acessa a página de ofertas do ML como navegador,
-extrai os produtos do JSON embutido na página (sem API, sem token).
+Fonte: RSS do Promobit (promoções reais e verificadas)
+Filtro: apenas produtos do Mercado Livre
+Afiliado: converte todos os links para o link de afiliado do ML
 """
 
 import os
@@ -10,287 +11,295 @@ import json
 import re
 import time
 import requests
-from bs4 import BeautifulSoup
+import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
+from urllib.parse import urlparse, urlencode, urlunparse, parse_qs, urljoin
 
 # ── Credenciais Telegram ──────────────────────────────────────
 TELEGRAM_TOKEN   = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHANNEL_ID", "")
 
 # ── Configurações ─────────────────────────────────────────────
-ARQUIVO_JSON    = "data/promocoes.json"
-MAX_PRODUTOS    = 60   # Total máximo de produtos no JSON
-DESCONTO_MINIMO = 5    # % mínimo para incluir
+ARQUIVO_JSON     = "data/promocoes.json"
+MAX_PRODUTOS     = 60
+DESCONTO_MINIMO  = 5
 
-# URLs de ofertas do ML por categoria
-PAGINAS = [
-    ("Celulares",   "📱", "https://www.mercadolivre.com.br/ofertas#deals-filter-facets=MLB1055"),
-    ("Tecnologia",  "💻", "https://www.mercadolivre.com.br/ofertas#deals-filter-facets=MLB1648"),
-    ("Games",       "🎮", "https://www.mercadolivre.com.br/ofertas#deals-filter-facets=MLB1144"),
-    ("TVs e Áudio", "📺", "https://www.mercadolivre.com.br/ofertas#deals-filter-facets=MLB1000"),
-    ("Casa",        "🏠", "https://www.mercadolivre.com.br/ofertas#deals-filter-facets=MLB1574"),
-    ("Ferramentas", "🔨", "https://www.mercadolivre.com.br/ofertas#deals-filter-facets=MLB1039"),
-    ("Moda",        "👕", "https://www.mercadolivre.com.br/ofertas#deals-filter-facets=MLB1430"),
+# Seu tracking ID do programa de afiliados do ML
+ML_TRACKING_ID   = "nc20240806083958"
+
+# Feeds RSS de promoções — vamos usar múltiplos para ter mais produtos
+FEEDS_RSS = [
+    ("https://www.promobit.com.br/feed/",          "Promobit"),
+    ("https://www.pelando.com.br/api/feed/rss",    "Pelando"),
 ]
 
-# Headers que imitam Chrome real
+# Domínios do Mercado Livre para filtrar
+DOMINIOS_ML = [
+    "mercadolivre.com.br",
+    "mercadolibre.com",
+    "mercadolivre.com",
+    "meli.com",
+]
+
+# Mapeamento de palavras-chave para categorias
+CATEGORIAS_KEYWORDS = {
+    "Celulares":   ["celular", "smartphone", "iphone", "samsung galaxy", "motorola", "xiaomi", "fone", "earphone", "airpods", "carregador"],
+    "Tecnologia":  ["notebook", "laptop", "macbook", "tablet", "ipad", "smartwatch", "relógio inteligente", "câmera"],
+    "Games":       ["playstation", "xbox", "nintendo", "controle", "headset gamer", "mouse gamer", "teclado gamer", "placa de vídeo", "gpu"],
+    "Informática": ["ssd", "hd externo", "pendrive", "memória ram", "processador", "monitor", "webcam", "roteador"],
+    "TVs e Áudio": ["smart tv", "televisão", "tv ", "soundbar", "caixa de som", "alexa", "echo", "home theater"],
+    "Casa":        ["airfryer", "fritadeira", "aspirador", "robô", "panela", "cafeteira", "ferro", "ventilador", "ar condicionado"],
+    "Ferramentas": ["furadeira", "parafusadeira", "kit ferramentas", "chave de fenda", "nível", "trena", "marreta"],
+    "Moda":        ["tênis", "calçado", "camiseta", "calça", "shorts", "mochila", "bolsa", "óculos"],
+}
+
 HEADERS = {
     "User-Agent":      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
-    "Accept":          "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept":          "application/rss+xml, application/xml, text/xml, */*",
     "Accept-Language": "pt-BR,pt;q=0.9",
-    "Connection":      "keep-alive",
-    # Accept-Encoding removido — requests gerencia descompressão automaticamente
 }
 
 
 # ═══════════════════════════════════════════════════════════════
-# 1. BUSCA NA PÁGINA DE OFERTAS
+# 1. LINK DE AFILIADO
 # ═══════════════════════════════════════════════════════════════
-def buscar_ofertas_pagina(categoria_nome, categoria_emoji, url):
-    """Acessa a página de ofertas e extrai produtos do JSON embutido."""
-    print(f"\n🔍 {categoria_emoji} {categoria_nome}")
-    print(f"   URL: {url}")
-
+def converter_link_afiliado(url):
+    """Converte qualquer link do ML para link de afiliado."""
     try:
-        session = requests.Session()
-        # Primeiro acessa a home para pegar cookies
-        session.get("https://www.mercadolivre.com.br", headers=HEADERS, timeout=15)
-        time.sleep(1)
-
-        # Depois acessa a página de ofertas
-        resp = session.get(
-            "https://www.mercadolivre.com.br/ofertas",
-            headers=HEADERS,
-            timeout=20,
+        # Remove parâmetros de tracking antigos e adiciona o nosso
+        parsed = urlparse(url)
+        # Garante que é link do ML
+        if not any(d in parsed.netloc for d in DOMINIOS_ML):
+            return url
+        # Monta o link limpo com o tracking ID
+        link_afiliado = (
+            f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
+            f"?matt_tool={ML_TRACKING_ID}"
+            f"&matt_word=&matt_source=copy&matt_type=sr"
         )
-        print(f"   Status: {resp.status_code}")
+        return link_afiliado
+    except Exception:
+        return url
 
+
+def eh_link_ml(url):
+    """Verifica se o link é do Mercado Livre."""
+    try:
+        netloc = urlparse(url).netloc.lower()
+        return any(d in netloc for d in DOMINIOS_ML)
+    except Exception:
+        return False
+
+
+# ═══════════════════════════════════════════════════════════════
+# 2. DETECTAR CATEGORIA
+# ═══════════════════════════════════════════════════════════════
+def detectar_categoria(titulo):
+    """Detecta a categoria do produto pelo título."""
+    titulo_lower = titulo.lower()
+    for categoria, keywords in CATEGORIAS_KEYWORDS.items():
+        for kw in keywords:
+            if kw in titulo_lower:
+                return categoria
+    return "Tecnologia"  # Padrão
+
+EMOJIS_CATEGORIAS = {
+    "Celulares":   "📱",
+    "Tecnologia":  "💻",
+    "Games":       "🎮",
+    "Informática": "🖥️",
+    "TVs e Áudio": "📺",
+    "Casa":        "🏠",
+    "Ferramentas": "🔨",
+    "Moda":        "👕",
+}
+
+
+# ═══════════════════════════════════════════════════════════════
+# 3. EXTRAIR PREÇOS DO TEXTO
+# ═══════════════════════════════════════════════════════════════
+def extrair_precos(texto):
+    """Extrai preço atual, original e desconto do texto da promoção."""
+    preco_atual    = 0.0
+    preco_original = 0.0
+    desconto       = 0
+
+    # Padrões comuns: "R$ 299,90", "R$299.90", "por R$ 199"
+    precos = re.findall(r"R\$\s*(\d{1,6}(?:[.,]\d{3})*(?:[.,]\d{2})?)", texto)
+    if precos:
+        valores = []
+        for p in precos:
+            p_limpo = p.replace(".", "").replace(",", ".")
+            try:
+                valores.append(float(p_limpo))
+            except Exception:
+                pass
+        if valores:
+            preco_atual    = min(valores)
+            preco_original = max(valores)
+
+    # Padrão de desconto: "39% OFF", "39% de desconto"
+    desc_match = re.search(r"(\d+)\s*%\s*(?:off|de desconto|desconto)", texto, re.IGNORECASE)
+    if desc_match:
+        desconto = int(desc_match.group(1))
+    elif preco_original > preco_atual > 0:
+        desconto = round(((preco_original - preco_atual) / preco_original) * 100)
+
+    return preco_atual, preco_original, desconto
+
+
+# ═══════════════════════════════════════════════════════════════
+# 4. BUSCAR RSS
+# ═══════════════════════════════════════════════════════════════
+def buscar_feed_rss(url_feed, nome_fonte):
+    """Busca e parseia um feed RSS de promoções."""
+    print(f"\n📡 Buscando feed: {nome_fonte}")
+    print(f"   URL: {url_feed}")
+    try:
+        resp = requests.get(url_feed, headers=HEADERS, timeout=20)
+        print(f"   Status: {resp.status_code}")
         if resp.status_code != 200:
-            print(f"   ⚠️ Erro HTTP: {resp.status_code}")
+            print(f"   ⚠️ Erro HTTP")
             return []
 
-        # Garante decodificação correta
-        resp.encoding = resp.apparent_encoding or "utf-8"
-        html = resp.text
-        print(f"   Encoding detectado: {resp.encoding}")
-        print(f"   Tamanho do HTML: {len(html)} chars")
-        print(f"   Início do HTML: {html[:200]}")
-        return extrair_produtos_html(html, categoria_nome, categoria_emoji)
+        root = ET.fromstring(resp.content)
+        # Namespace handling
+        ns = {"atom": "http://www.w3.org/2005/Atom"}
+
+        # Tenta pegar itens RSS padrão
+        items = root.findall(".//item")
+        if not items:
+            items = root.findall(".//entry")
+
+        print(f"   Itens encontrados no feed: {len(items)}")
+        return items
 
     except Exception as e:
-        print(f"   ⚠️ Erro: {e}")
+        print(f"   ⚠️ Erro ao buscar feed: {e}")
         return []
 
 
-def extrair_produtos_html(html, categoria_nome, categoria_emoji):
-    """Extrai produtos do HTML da página de ofertas."""
-    produtos = []
-
-    # Tenta extrair do JSON embutido na página (__PRELOADED_STATE__ ou similar)
-    padroes_json = [
-        r'window\.__PRELOADED_STATE__\s*=\s*({.+?});\s*</script>',
-        r'window\.__INITIAL_STATE__\s*=\s*({.+?});\s*</script>',
-        r'"deals"\s*:\s*(\[.+?\])\s*[,}]',
-        r'deals-app-container["\s]+data-component[^>]+>(.+?)</script>',
-    ]
-
-    for padrao in padroes_json:
-        matches = re.findall(padrao, html, re.DOTALL)
-        if matches:
-            print(f"   ✔ JSON encontrado com padrão: {padrao[:40]}...")
-            for match in matches[:1]:
-                try:
-                    dados = json.loads(match)
-                    prods = extrair_de_json(dados, categoria_nome, categoria_emoji)
-                    if prods:
-                        print(f"   ✔ {len(prods)} produtos extraídos do JSON")
-                        return prods
-                except Exception as e:
-                    print(f"   ⚠️ Erro ao parsear JSON: {e}")
-
-    # Fallback: extrai do HTML diretamente com BeautifulSoup
-    print("   Tentando extração via HTML...")
-    return extrair_de_html(html, categoria_nome, categoria_emoji)
-
-
-def extrair_de_json(dados, categoria_nome, categoria_emoji):
-    """Extrai produtos de um JSON embutido na página."""
-    produtos = []
-
-    # Navega pelo JSON procurando listas de produtos
-    def buscar_itens(obj, profundidade=0):
-        if profundidade > 8:
-            return []
-        itens = []
-        if isinstance(obj, list):
-            for item in obj:
-                if isinstance(item, dict) and item.get("price") and item.get("title"):
-                    itens.append(item)
-                else:
-                    itens.extend(buscar_itens(item, profundidade + 1))
-        elif isinstance(obj, dict):
-            for v in obj.values():
-                itens.extend(buscar_itens(v, profundidade + 1))
-        return itens
-
-    itens = buscar_itens(dados)
-    for item in itens[:15]:
-        prod = montar_produto(item, categoria_nome, categoria_emoji)
-        if prod:
-            produtos.append(prod)
-    return produtos
-
-
-def extrair_de_html(html, categoria_nome, categoria_emoji):
-    """Extrai produtos diretamente do HTML com BeautifulSoup."""
-    soup    = BeautifulSoup(html, "html.parser")
-    produtos = []
-
-    # Seletores comuns de cards de produto no ML
-    seletores = [
-        "li.promotion-item",
-        "div.promotion-item",
-        "li[class*='deal']",
-        "div[class*='deal-item']",
-        "article[class*='item']",
-        "li.ui-search-layout__item",
-    ]
-
-    cards = []
-    for seletor in seletores:
-        cards = soup.select(seletor)
-        if cards:
-            print(f"   ✔ {len(cards)} cards encontrados com '{seletor}'")
-            break
-
-    if not cards:
-        print("   ⚠️ Nenhum card encontrado no HTML")
-        # Debug: salva trecho do HTML para análise
-        print(f"   HTML snippet: {html[2000:2500]}")
-        return []
-
-    for card in cards[:15]:
-        try:
-            titulo_el = card.select_one("p.promotion-item__title, h2, .item__title, [class*='title']")
-            preco_el  = card.select_one("[class*='price__fraction'], [class*='price-tag']")
-            link_el   = card.select_one("a[href]")
-            img_el    = card.select_one("img[src]")
-            orig_el   = card.select_one("[class*='original'], [class*='before'], s")
-            desc_el   = card.select_one("[class*='discount'], [class*='off']")
-
-            if not titulo_el or not preco_el:
-                continue
-
-            titulo = titulo_el.get_text(strip=True)
-            link   = link_el["href"] if link_el else "#"
-            imagem = img_el.get("data-src") or img_el.get("src", "") if img_el else ""
-
-            # Limpa e converte preço
-            preco_txt = preco_el.get_text(strip=True).replace(".", "").replace(",", ".")
-            preco_num = float(re.sub(r"[^\d.]", "", preco_txt) or "0")
-
-            orig_num = 0
-            if orig_el:
-                orig_txt = orig_el.get_text(strip=True).replace(".", "").replace(",", ".")
-                orig_num = float(re.sub(r"[^\d.]", "", orig_txt) or "0")
-
-            desconto = 0
-            if desc_el:
-                desc_txt = desc_el.get_text(strip=True)
-                desc_match = re.search(r"(\d+)", desc_txt)
-                if desc_match:
-                    desconto = int(desc_match.group(1))
-            elif orig_num > preco_num > 0:
-                desconto = round(((orig_num - preco_num) / orig_num) * 100)
-
-            if preco_num <= 0 or desconto < DESCONTO_MINIMO:
-                continue
-
-            frete_el     = card.select_one("[class*='shipping'], [class*='frete']")
-            frete_gratis = bool(frete_el and "grátis" in frete_el.get_text().lower())
-
-            produtos.append({
-                "id":                   re.search(r"MLB\d+", link).group() if re.search(r"MLB\d+", link) else f"item_{len(produtos)}",
-                "titulo":               titulo,
-                "categoria":            categoria_nome,
-                "categoria_emoji":      categoria_emoji,
-                "imagem":               imagem,
-                "preco_atual":          round(preco_num, 2),
-                "preco_original":       round(orig_num, 2) if orig_num > preco_num else round(preco_num * 1.2, 2),
-                "desconto_porcentagem": desconto,
-                "parcelas_num":         0,
-                "parcelas_valor":       0,
-                "frete_gratis":         frete_gratis,
-                "frete_tag":            "Frete grátis ⚡ FULL" if frete_gratis else "",
-                "cupom_codigo":         "",
-                "cupom_valor":          "",
-                "loja":                 "Mercado Livre",
-                "link_afiliado":        link,
-                "destaque":             desconto >= 25,
-                "adicionado_em":        datetime.now(timezone.utc).isoformat(),
-            })
-        except Exception as e:
-            print(f"   ⚠️ Erro ao processar card: {e}")
-            continue
-
-    print(f"   ✔ {len(produtos)} produtos extraídos do HTML")
-    return produtos
-
-
-def montar_produto(item, categoria_nome, categoria_emoji):
-    """Monta produto a partir de um dict do JSON embutido."""
+def processar_item_rss(item, nome_fonte):
+    """Processa um item do RSS e retorna produto formatado ou None."""
     try:
-        preco_atual    = float(item.get("price", 0) or 0)
-        preco_original = float(item.get("original_price", 0) or item.get("originalPrice", 0) or 0)
-        titulo         = item.get("title", "") or item.get("name", "")
-        link           = item.get("permalink", "") or item.get("url", "") or "#"
-        imagem         = item.get("thumbnail", "") or item.get("image", "") or ""
-        item_id        = item.get("id", "") or re.search(r"MLB\d+", link).group() if re.search(r"MLB\d+", link) else ""
+        # Extrai campos do RSS
+        titulo = ""
+        link   = ""
+        descricao = ""
+        imagem = ""
 
-        if not titulo or preco_atual <= 0:
+        for tag in ["title"]:
+            el = item.find(tag)
+            if el is not None and el.text:
+                titulo = el.text.strip()
+
+        for tag in ["link"]:
+            el = item.find(tag)
+            if el is not None:
+                link = (el.text or el.get("href", "")).strip()
+
+        for tag in ["description", "summary", "content"]:
+            el = item.find(tag)
+            if el is not None and el.text:
+                descricao = el.text.strip()
+                break
+
+        # Tenta pegar imagem
+        enclosure = item.find("enclosure")
+        if enclosure is not None:
+            imagem = enclosure.get("url", "")
+
+        # Se não tem imagem no enclosure, tenta no media:content
+        if not imagem:
+            for el in item:
+                if "image" in el.tag.lower() or "thumbnail" in el.tag.lower():
+                    imagem = el.get("url", "") or (el.text or "")
+                    if imagem:
+                        break
+
+        if not titulo or not link:
             return None
 
-        if preco_original > preco_atual:
-            desconto = round(((preco_original - preco_atual) / preco_original) * 100)
+        # Filtra apenas links do Mercado Livre
+        # Verifica no link principal e na descrição
+        link_ml = ""
+        if eh_link_ml(link):
+            link_ml = link
         else:
-            desconto = int(item.get("discount_percentage", 0) or item.get("discountPercentage", 0) or 0)
+            # Tenta achar link do ML na descrição
+            links_desc = re.findall(r'https?://[^\s"<>]+', descricao)
+            for l in links_desc:
+                if eh_link_ml(l):
+                    link_ml = l
+                    break
 
-        if desconto < DESCONTO_MINIMO:
+        if not link_ml:
+            return None  # Não é do ML, ignora
+
+        # Extrai preços do título + descrição
+        texto_completo = f"{titulo} {descricao}"
+        preco_atual, preco_original, desconto = extrair_precos(texto_completo)
+
+        if desconto < DESCONTO_MINIMO and preco_atual <= 0:
             return None
 
-        frete        = item.get("shipping", {}) or {}
-        frete_gratis = frete.get("free_shipping", False) or frete.get("freeShipping", False)
+        # Se não achou preço mas tem desconto no título, usa valores aproximados
+        if preco_atual <= 0:
+            preco_atual    = 0.0
+            preco_original = 0.0
 
-        parcelas     = item.get("installments", {}) or {}
-        parcelas_num = int(parcelas.get("quantity", 0) or 0)
-        parcelas_val = float(parcelas.get("amount", 0) or 0)
+        # Detecta categoria
+        categoria       = detectar_categoria(titulo)
+        categoria_emoji = EMOJIS_CATEGORIAS.get(categoria, "🛍️")
+
+        # Extrai ID único do link ML
+        id_match = re.search(r"MLB[-\s]?\d+", link_ml)
+        item_id  = id_match.group().replace(" ", "").replace("-", "") if id_match else f"rss_{abs(hash(link_ml))}"
+
+        # Converte para link de afiliado
+        link_afiliado = converter_link_afiliado(link_ml)
+
+        # Frete grátis mencionado?
+        frete_gratis = bool(re.search(r"frete\s*gr[aá]tis|full|entrega\s*gr[aá]tis", texto_completo, re.IGNORECASE))
+
+        # Cupom mencionado?
+        cupom_codigo = ""
+        cupom_valor  = ""
+        cupom_match  = re.search(r"cupom[:\s]+([A-Z0-9]{4,20})", texto_completo, re.IGNORECASE)
+        if cupom_match:
+            cupom_codigo = cupom_match.group(1).upper()
+        desconto_cupom = re.search(r"cupom.*?(\d+%|\d+\s*reais|\d+\s*off)", texto_completo, re.IGNORECASE)
+        if desconto_cupom:
+            cupom_valor = desconto_cupom.group(1)
 
         return {
-            "id":                   str(item_id),
-            "titulo":               titulo,
-            "categoria":            categoria_nome,
+            "id":                   item_id,
+            "titulo":               titulo[:120],
+            "categoria":            categoria,
             "categoria_emoji":      categoria_emoji,
-            "imagem":               imagem.replace("I.jpg", "O.jpg"),
+            "imagem":               imagem,
             "preco_atual":          round(preco_atual, 2),
-            "preco_original":       round(preco_original, 2) if preco_original > preco_atual else round(preco_atual * 1.2, 2),
+            "preco_original":       round(preco_original, 2),
             "desconto_porcentagem": desconto,
-            "parcelas_num":         parcelas_num,
-            "parcelas_valor":       round(parcelas_val, 2),
+            "parcelas_num":         0,
+            "parcelas_valor":       0.0,
             "frete_gratis":         frete_gratis,
             "frete_tag":            "Frete grátis ⚡ FULL" if frete_gratis else "",
-            "cupom_codigo":         "",
-            "cupom_valor":          "",
+            "cupom_codigo":         cupom_codigo,
+            "cupom_valor":          cupom_valor,
             "loja":                 "Mercado Livre",
-            "link_afiliado":        link,
+            "link_afiliado":        link_afiliado,
             "destaque":             desconto >= 25,
             "adicionado_em":        datetime.now(timezone.utc).isoformat(),
         }
-    except Exception:
+
+    except Exception as e:
+        print(f"   ⚠️ Erro ao processar item: {e}")
         return None
 
 
 # ═══════════════════════════════════════════════════════════════
-# 2. JSON
+# 5. JSON
 # ═══════════════════════════════════════════════════════════════
 def carregar_ids_existentes():
     try:
@@ -312,11 +321,24 @@ def salvar_json(promocoes):
 
 
 # ═══════════════════════════════════════════════════════════════
-# 3. TELEGRAM
+# 6. TELEGRAM
 # ═══════════════════════════════════════════════════════════════
 def enviar_telegram(produto):
     if not TELEGRAM_TOKEN or TELEGRAM_TOKEN == "placeholder":
         return
+
+    preco_linha = ""
+    if produto["preco_atual"] > 0:
+        if produto["preco_original"] > produto["preco_atual"]:
+            preco_linha = (
+                f"~~R$ {produto['preco_original']:.2f}~~ → "
+                f"*R$ {produto['preco_atual']:.2f}* "
+                f"*{produto['desconto_porcentagem']}% OFF*"
+            )
+        else:
+            preco_linha = f"*{produto['desconto_porcentagem']}% OFF*"
+    else:
+        preco_linha = f"*{produto['desconto_porcentagem']}% OFF*"
 
     cupom_linha = ""
     if produto.get("cupom_codigo"):
@@ -328,12 +350,10 @@ def enviar_telegram(produto):
 
     texto = (
         f"{produto['categoria_emoji']} *{produto['titulo']}*\n\n"
-        f"~~R$ {produto['preco_original']:.2f}~~ → "
-        f"*R$ {produto['preco_atual']:.2f}* "
-        f"*{produto['desconto_porcentagem']}% OFF*"
+        f"{preco_linha}"
         f"{frete_linha}"
         f"{cupom_linha}\n\n"
-        f"🛒 [Ver oferta]({produto['link_afiliado']})\n\n"
+        f"🛒 [Ver oferta no Mercado Livre]({produto['link_afiliado']})\n\n"
         f"_PromoVisk – Promoções que valem a pena_ 🔥"
     )
 
@@ -351,7 +371,7 @@ def enviar_telegram(produto):
 
 
 # ═══════════════════════════════════════════════════════════════
-# 4. MAIN
+# 7. MAIN
 # ═══════════════════════════════════════════════════════════════
 def main():
     print("\n🚀 PromoVisk – Iniciando busca de promoções...")
@@ -360,20 +380,38 @@ def main():
     ids_existentes = carregar_ids_existentes()
     todas          = []
     ids_vistos     = set()
+    total_ml       = 0
+    total_ignorado = 0
 
-    for categoria_nome, categoria_emoji, url in PAGINAS:
-        produtos = buscar_ofertas_pagina(categoria_nome, categoria_emoji, url)
+    for url_feed, nome_fonte in FEEDS_RSS:
+        items = buscar_feed_rss(url_feed, nome_fonte)
 
-        for prod in produtos:
+        for item in items:
+            prod = processar_item_rss(item, nome_fonte)
+
+            if prod is None:
+                total_ignorado += 1
+                continue
+
             if prod["id"] in ids_vistos:
                 continue
+
             ids_vistos.add(prod["id"])
             todas.append(prod)
+            total_ml += 1
+
+            cupom_info = f" | 🏷️ {prod['cupom_codigo']}" if prod.get("cupom_codigo") else ""
+            frete_info = " | ✅ Frete" if prod["frete_gratis"] else ""
+            print(f"   ✔ ML | -{prod['desconto_porcentagem']}% | {prod['titulo'][:45]}{cupom_info}{frete_info}")
 
             if prod["id"] not in ids_existentes:
                 enviar_telegram(prod)
 
-        time.sleep(2)  # Pausa entre categorias para não sobrecarregar
+        time.sleep(1)
+
+    print(f"\n📊 Resumo:")
+    print(f"   Total ML encontrado: {total_ml}")
+    print(f"   Ignorados (não ML):  {total_ignorado}")
 
     todas.sort(key=lambda x: x["desconto_porcentagem"], reverse=True)
     todas = todas[:MAX_PRODUTOS]
@@ -381,7 +419,7 @@ def main():
     if todas:
         salvar_json(todas)
     else:
-        print("\n⚠️ Nenhuma promoção encontrada.")
+        print("\n⚠️ Nenhuma promoção do ML encontrada.")
 
     print(f"\n✅ Concluído! {len(todas)} promoções salvas.\n")
 
